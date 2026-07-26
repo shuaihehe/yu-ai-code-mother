@@ -34,7 +34,7 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
-
+        <!-- mysql-connector-j 负责真正连接 MySQL：识别 jdbc:mysql://... URL、实现 MySQL 协议、和 MySQL 服务端通信 -->
 		<dependency>
 			<groupId>com.mysql</groupId>
 			<artifactId>mysql-connector-j</artifactId>
@@ -60,7 +60,31 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-	</dependencies>
+        <!-- MyBatis-Flex 4版本需要再引入jdbc-->
+        <!-- MyBatis-Flex 的优势是不用额外引入 MyBatis / MyBatis-Spring 这些依赖，不是说数据库连接池、JDBC 自动配置也都完全不需要。-->
+        <dependency>
+            <groupId>com.mybatis-flex</groupId>
+            <artifactId>mybatis-flex-spring-boot4-starter</artifactId>
+            <version>1.11.8</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <!-- 代码生成模块：和 MyBatis-Flex starter 保持同版本 -->
+        <dependency>
+            <groupId>com.mybatis-flex</groupId>
+            <artifactId>mybatis-flex-codegen</artifactId>
+            <version>1.11.8</version>
+        </dependency>
+        <!-- 数据库连接池：Spring Boot parent 已管理版本，不写 version -->
+        <!-- HikariCP 负责管理连接：创建连接、复用连接、释放连接、控制最大连接数 -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+
+    </dependencies>
 
 	<build>
 		<plugins>
