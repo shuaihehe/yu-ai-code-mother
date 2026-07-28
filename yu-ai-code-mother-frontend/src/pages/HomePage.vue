@@ -274,6 +274,11 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+:global(:root) {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+}
+
 #homePage {
   width: 100%;
   margin: 0;
