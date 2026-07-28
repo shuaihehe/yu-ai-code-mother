@@ -1,48 +1,31 @@
-# yu-ai-code-mother-frontend
+# 鱼皮 AI 代码生成器 - 前端
 
-This template should help get you started developing with Vue 3 in Vite.
+这是一个基于 Vue 3、TypeScript 和 Ant Design Vue 的 AI 零代码应用生成平台前端。
 
-## Recommended IDE Setup
+目前已包含主页、用户登录与注册、用户管理、应用管理、对话生成、应用编辑、
+生成结果预览、代码下载和部署结果展示。应用与对话相关接口会随着后端模块补充后可用。
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## 本地开发
 
 ```sh
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
+开发服务器会把 `/api` 请求代理到 `http://localhost:8123`，需要先启动本地后端。
+
+## 构建检查
 
 ```sh
 npm run build
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+## 接口代码生成
+
+后端启动并可以访问 OpenAPI 文档后，可运行：
 
 ```sh
-npm run lint
+npm run openapi2ts
 ```
+
+生成配置位于 `openapi2ts.config.ts`。
