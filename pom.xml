@@ -55,6 +55,18 @@
             <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
             <version>4.4.0</version>
         </dependency>
+        <!-- LangChain4j 高层 API（AiServices、RAG、Tools 等），只用 ChatModel 低层 API 时可不引入 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+        <!-- OpenAI 集成 starter：Spring Boot 4 要用 spring-boot4-starter 后缀，starter 版本带 -beta 后缀，与核心库配套发布 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai-spring-boot4-starter</artifactId>
+            <version>1.18.1-beta28</version>
+        </dependency>
         <!-- Spring Boot 4 开始，spring-boot-starter-aop 已更名为 spring-boot-starter-aspectj -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
