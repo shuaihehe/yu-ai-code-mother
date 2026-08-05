@@ -20,7 +20,7 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateAndSaveCode() {
-        File file = aiCodeGeneratorFacade.generateAndSaveCode("生成一个登录页面，一共不超过30行代码", CodeGenTypeEnum.MULTI_FILE);
+        File file = aiCodeGeneratorFacade.generateAndSaveCode("生成一个登录页面，一共不超过30行代码", CodeGenTypeEnum.HTML);
         Assertions.assertNotNull(file);
     }
 

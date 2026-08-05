@@ -12,6 +12,7 @@ import java.io.File;
 /**
  * 代码文件保存器
  */
+@Deprecated
 public class CodeFileSaver {
 
     // 文件保存的根目录

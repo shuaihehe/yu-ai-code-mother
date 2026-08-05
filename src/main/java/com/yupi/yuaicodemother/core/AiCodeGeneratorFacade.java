@@ -3,6 +3,8 @@ package com.yupi.yuaicodemother.core;
 import com.yupi.yuaicodemother.ai.AiCodeGeneratorService;
 import com.yupi.yuaicodemother.ai.model.HtmlCodeResult;
 import com.yupi.yuaicodemother.ai.model.MultiFileCodeResult;
+import com.yupi.yuaicodemother.core.parser.CodeParserExecutor;
+import com.yupi.yuaicodemother.core.saver.CodeFileSaverExecutor;
 import com.yupi.yuaicodemother.exception.BusinessException;
 import com.yupi.yuaicodemother.exception.ErrorCode;
 import com.yupi.yuaicodemother.model.enums.CodeGenTypeEnum;
@@ -72,25 +74,36 @@ public class AiCodeGeneratorFacade {
      */
     private Flux<String> generateAndSaveHtmlCodeStream(String userMessage) {
         Flux<String> result = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
+        return processCodeStream(result, CodeGenTypeEnum.HTML);
+    }
+
+    /**
+     * 处理代码流式返回，并保存代码
+     * @param codeStream 代码流
+     * @param codeGenTypeEnum 代码生成类型
+     * @return 返回处理后的代码流
+     */
+    private Flux<String> processCodeStream(Flux<String> codeStream, CodeGenTypeEnum codeGenTypeEnum) {
         // 字符串拼接器，用户当流式返回所有的代之后，再保存代码
         StringBuilder codeBuilder = new StringBuilder();
-        return result.doOnNext(chunk -> {
+        return codeStream.doOnNext(chunk -> {
             // 实时收集代码片段
             codeBuilder.append(chunk);
         }).doOnComplete(() -> {
             // 流式返回完成后，保存代码
             try {
-                String completeHtmlCode = codeBuilder.toString();
-                // 解析代码为对象
-                HtmlCodeResult htmlCodeResult = CodeParser.parseHtmlCode(completeHtmlCode);
-                // 保存代码到文件
-                File saveDir = CodeFileSaver.saveHtmlCodeResult(htmlCodeResult);
+                String completeCode = codeBuilder.toString();
+                // 使用执行器解析代码
+                Object parseResult = CodeParserExecutor.executeParse(completeCode, codeGenTypeEnum);
+                // 使用执行器保存代码
+                File saveDir = CodeFileSaverExecutor.executeSaver(parseResult, codeGenTypeEnum);
                 log.info("保存成功，保存目录：{}", saveDir.getAbsolutePath());
             } catch (Exception e) {
                 log.error("保存代码时出错：{}", e.getMessage());
             }
         });
     }
+
 
     /**
      * 根据用户提示词生成多文件代码并保存 (流式)
@@ -99,33 +112,28 @@ public class AiCodeGeneratorFacade {
      */
     private Flux<String> generateAndSaveMultiFileCodeStream(String userMessage) {
         Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
-        // 字符串拼接器，用户当流式返回所有的代之后，再保存代码
-        StringBuilder codeBuilder = new StringBuilder();
-        return result.doOnNext(chunk -> {
-            // 实时收集代码片段
-            codeBuilder.append(chunk);
-        }).doOnComplete(() -> {
-            // 流式返回完成后，保存代码
-            try {
-                String completeMultiFileCode = codeBuilder.toString();
-                // 解析代码为对象
-                MultiFileCodeResult multiFileCodeResult = CodeParser.parseMultiFileCode(completeMultiFileCode);
-                // 保存代码到文件
-                File saveDir = CodeFileSaver.saveMultiFileCodeResult(multiFileCodeResult);
-                log.info("保存成功，保存目录：{}", saveDir.getAbsolutePath());
-            } catch (Exception e) {
-                log.error("保存代码时出错：{}", e.getMessage());
-            }
-        });
+        return processCodeStream(result, CodeGenTypeEnum.MULTI_FILE);
+    }
+
+    /**
+     * 处理非流式代码生成结果，并保存代码
+     * @param codeResult      代码生成结果对象
+     * @param codeGenTypeEnum  代码生成类型
+     * @return 保存的文件目录
+     */
+    private File processCode(Object codeResult, CodeGenTypeEnum codeGenTypeEnum) {
+        File saveDir = CodeFileSaverExecutor.executeSaver(codeResult, codeGenTypeEnum);
+        log.info("保存成功，保存目录：{}", saveDir.getAbsolutePath());
+        return saveDir;
     }
 
     private File generateAndSaveHtmlCode(String userMessage) {
         HtmlCodeResult htmlCodeResult = aiCodeGeneratorService.generateHtmlCode(userMessage);
-        return CodeFileSaver.saveHtmlCodeResult(htmlCodeResult);
+        return processCode(htmlCodeResult, CodeGenTypeEnum.HTML);
     }
 
     private File generateAndSaveMultiFileCode(String userMessage) {
         MultiFileCodeResult multiFileCodeResult = aiCodeGeneratorService.generateMultiFileCode(userMessage);
-        return CodeFileSaver.saveMultiFileCodeResult(multiFileCodeResult);
+        return processCode(multiFileCodeResult, CodeGenTypeEnum.MULTI_FILE);
     }
 }
