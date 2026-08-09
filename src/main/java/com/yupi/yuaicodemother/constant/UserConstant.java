@@ -1,4 +1,4 @@
-package com.yupi.yuaicodemother.config;
+package com.yupi.yuaicodemother.constant;
 
 /**
  * 用户常量
