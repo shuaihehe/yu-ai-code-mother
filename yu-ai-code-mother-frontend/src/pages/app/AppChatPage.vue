@@ -16,18 +16,25 @@
           应用详情
         </a-button>
         <a-button
-            type="primary"
-            ghost
-            @click="downloadCode"
-            :loading="downloading"
-            :disabled="!isOwner"
+          v-if="BACKEND_FEATURES.codeDownload"
+          type="primary"
+          ghost
+          @click="downloadCode"
+          :loading="downloading"
+          :disabled="!isOwner"
         >
           <template #icon>
             <DownloadOutlined />
           </template>
           下载代码
         </a-button>
-        <a-button type="primary" @click="deployApp" :loading="deploying">
+        <a-button
+          type="primary"
+          @click="deployApp"
+          :loading="deploying"
+          :disabled="!isOwner || isGenerating"
+          :title="isOwner ? '将当前生成结果部署到服务器' : '只能部署自己的应用'"
+        >
           <template #icon>
             <CloudUploadOutlined />
           </template>
@@ -42,8 +49,22 @@
       <div class="chat-section">
         <!-- 消息区域 -->
         <div class="messages-container" ref="messagesContainer">
+          <div
+            v-if="!isGenerating && messages.length === 0 && isOwner"
+            class="empty-chat-guide"
+          >
+            <div class="empty-chat-icon">✨</div>
+            <h3>应用还没有开始生成</h3>
+            <p>可以直接使用创建应用时填写的描述开始生成。</p>
+            <a-button type="primary" @click="startFromInitialPrompt">
+              使用初始描述开始生成
+            </a-button>
+          </div>
           <!-- 加载更多按钮 -->
-          <div v-if="hasMoreHistory" class="load-more-container">
+          <div
+            v-if="BACKEND_FEATURES.chatHistory && hasMoreHistory"
+            class="load-more-container"
+          >
             <a-button type="link" @click="loadMoreHistory" :loading="loadingHistory" size="small">
               加载更多历史消息
             </a-button>
@@ -228,7 +249,9 @@ import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import aiAvatar from '@/assets/aiAvatar.png'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
+import { BACKEND_FEATURES } from '@/config/features'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
+import { isSameEntityId, normalizeEntityId } from '@/utils/entityId'
 
 import {
   CloudUploadOutlined,
@@ -245,7 +268,7 @@ const loginUserStore = useLoginUserStore()
 
 // 应用信息
 const appInfo = ref<API.AppVO>()
-const appId = ref<number>()
+const appId = ref<string>()
 
 // 对话相关
 interface Message {
@@ -290,7 +313,7 @@ const visualEditor = new VisualEditor({
 
 // 权限相关
 const isOwner = computed(() => {
-  return appInfo.value?.userId === loginUserStore.loginUser.id
+  return isSameEntityId(appInfo.value?.userId, loginUserStore.loginUser.id)
 })
 
 const isAdmin = computed(() => {
@@ -303,6 +326,16 @@ const appDetailVisible = ref(false)
 // 显示应用详情
 const showAppDetail = () => {
   appDetailVisible.value = true
+}
+
+// 当首次跳转被中断时，允许使用已经保存的初始化提示词继续生成。
+const startFromInitialPrompt = async () => {
+  const prompt = appInfo.value?.initPrompt?.trim()
+  if (!prompt) {
+    message.warning('当前应用没有初始化描述，请在下方输入生成要求')
+    return
+  }
+  await sendInitialMessage(prompt)
 }
 
 // 加载对话历史
@@ -362,8 +395,8 @@ const loadMoreHistory = async () => {
 // 获取应用信息
 const fetchAppInfo = async () => {
   const routeId = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
-  const id = Number(routeId)
-  if (!Number.isSafeInteger(id) || id <= 0) {
+  const id = normalizeEntityId(routeId)
+  if (!id) {
     message.error('应用ID不存在')
     await router.push('/')
     return
@@ -376,20 +409,35 @@ const fetchAppInfo = async () => {
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
 
-      // 先加载对话历史
-      await loadChatHistory()
-      // 如果有至少2条对话记录，展示对应的网站
-      if (messages.value.length >= 2) {
+      if (BACKEND_FEATURES.chatHistory) {
+        // 后端支持历史记录时，用历史消息判断生成状态。
+        await loadChatHistory()
+      } else {
+        // 当前后端尚未实现历史接口，直接尝试加载已有静态预览。
+        historyLoaded.value = true
         updatePreview()
       }
-      // 检查是否需要自动发送初始提示词
-      // 只有在是自己的应用且没有对话历史时才自动发送
+
+      if (BACKEND_FEATURES.chatHistory && messages.value.length >= 2) {
+        updatePreview()
+      }
+
+      const autoGenerateRequested = route.query.autoGenerate === '1'
+      // 有历史接口时通过空历史判断首次生成；当前阶段则只响应新建应用携带的标记，
+      // 避免用户刷新页面时重复调用 AI。
+      const shouldAutoGenerate = BACKEND_FEATURES.chatHistory || autoGenerateRequested
       if (
-          appInfo.value.initPrompt &&
-          isOwner.value &&
-          messages.value.length === 0 &&
-          historyLoaded.value
+        appInfo.value.initPrompt &&
+        isOwner.value &&
+        messages.value.length === 0 &&
+        historyLoaded.value &&
+        shouldAutoGenerate
       ) {
+        if (autoGenerateRequested) {
+          const query = { ...route.query }
+          delete query.autoGenerate
+          await router.replace({ path: route.path, query })
+        }
         await sendInitialMessage(appInfo.value.initPrompt)
       }
     } else {
@@ -671,6 +719,10 @@ const deployApp = async () => {
     message.error('应用ID不存在')
     return
   }
+  if (!isOwner.value) {
+    message.warning('只能部署自己的应用')
+    return
+  }
 
   deploying.value = true
   try {
@@ -681,6 +733,7 @@ const deployApp = async () => {
     if (res.data.code === 0 && res.data.data) {
       deployUrl.value = res.data.data
       deployModalVisible.value = true
+      await fetchAppInfo()
       message.success('部署成功')
     } else {
       message.error('部署失败：' + res.data.message)
@@ -855,6 +908,30 @@ onUnmounted(() => {
   padding: 16px;
   overflow-y: auto;
   scroll-behavior: smooth;
+}
+
+.empty-chat-guide {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  color: #64748b;
+  text-align: center;
+}
+
+.empty-chat-guide h3 {
+  margin: 8px 0;
+  color: #1e293b;
+}
+
+.empty-chat-guide p {
+  margin-bottom: 20px;
+}
+
+.empty-chat-icon {
+  font-size: 36px;
 }
 
 .message-item {

@@ -54,6 +54,7 @@ import { type MenuProps, message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
 import { LogoutOutlined, HomeOutlined } from '@ant-design/icons-vue'
+import { BACKEND_FEATURES } from '@/config/features'
 
 const loginUserStore = useLoginUserStore()
 const router = useRouter()
@@ -86,11 +87,15 @@ const originItems = [
     label: '应用管理',
     title: '应用管理',
   },
-  {
-    key: '/admin/chatManage',
-    label: '对话管理',
-    title: '对话管理',
-  },
+  ...(BACKEND_FEATURES.chatHistory
+    ? [
+        {
+          key: '/admin/chatManage',
+          label: '对话管理',
+          title: '对话管理',
+        },
+      ]
+    : []),
   {
     key: 'others',
     label: h('a', { href: 'https://www.codefather.cn', target: '_blank' }, '编程导航'),

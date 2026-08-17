@@ -127,6 +127,7 @@ import { formatTime } from '@/utils/time'
 import UserInfo from '@/components/UserInfo.vue'
 import { getStaticPreviewUrl } from '@/config/env'
 import type { FormInstance } from 'ant-design-vue'
+import { isSameEntityId, normalizeEntityId } from '@/utils/entityId'
 
 const route = useRoute()
 const router = useRouter()
@@ -165,7 +166,8 @@ const rules = {
 
 // 获取应用信息
 const fetchAppInfo = async () => {
-  const id = route.params.id as string
+  const routeId = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
+  const id = normalizeEntityId(routeId)
   if (!id) {
     message.error('应用ID不存在')
     router.push('/')
@@ -174,12 +176,12 @@ const fetchAppInfo = async () => {
 
   loading.value = true
   try {
-    const res = await getAppVoById({ id: id as unknown as number })
+    const res = await getAppVoById({ id })
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
 
       // 检查权限
-      if (!isAdmin.value && appInfo.value.userId !== loginUserStore.loginUser.id) {
+      if (!isAdmin.value && !isSameEntityId(appInfo.value.userId, loginUserStore.loginUser.id)) {
         message.error('您没有权限编辑此应用')
         router.push('/')
         return

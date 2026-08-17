@@ -58,9 +58,13 @@ const createApp = async () => {
 
     if (res.data.code === 0 && res.data.data) {
       message.success('应用创建成功')
-      // 跳转到对话页面，确保ID是字符串类型
+      // 标记为新建应用，让对话页自动发送初始化提示词。
+      // 当前后端还没有对话历史接口，不能依赖历史记录判断是否需要首次生成。
       const appId = String(res.data.data)
-      await router.push(`/app/chat/${appId}`)
+      await router.push({
+        path: `/app/chat/${appId}`,
+        query: { autoGenerate: '1' },
+      })
     } else {
       message.error('创建失败：' + res.data.message)
     }

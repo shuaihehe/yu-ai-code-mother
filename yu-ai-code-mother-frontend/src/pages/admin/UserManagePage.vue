@@ -132,7 +132,7 @@ const doSearch = () => {
 }
 
 // 删除数据
-const doDelete = async (id?: number) => {
+const doDelete = async (id?: API.EntityId) => {
   if (!id) {
     return
   }
