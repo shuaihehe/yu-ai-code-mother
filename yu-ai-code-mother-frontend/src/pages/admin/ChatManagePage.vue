@@ -3,27 +3,30 @@
     <!-- 搜索表单 -->
     <a-form layout="inline" :model="searchParams" @finish="doSearch">
       <a-form-item label="消息内容">
-        <a-input v-model:value="searchParams.message" placeholder="输入消息内容" />
+        <a-input v-model:value="searchParams.message" placeholder="输入消息内容" allow-clear />
       </a-form-item>
       <a-form-item label="消息类型">
         <a-select
           v-model:value="searchParams.messageType"
           placeholder="选择消息类型"
           style="width: 120px"
+          allow-clear
         >
-          <a-select-option value="">全部</a-select-option>
           <a-select-option value="user">用户消息</a-select-option>
-          <a-select-option value="assistant">AI消息</a-select-option>
+          <a-select-option value="ai">AI 消息</a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item label="应用ID">
-        <a-input v-model:value="searchParams.appId" placeholder="输入应用ID" />
+        <a-input v-model:value="searchParams.appId" placeholder="输入应用ID" allow-clear />
       </a-form-item>
       <a-form-item label="用户ID">
-        <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" />
+        <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" allow-clear />
       </a-form-item>
       <a-form-item>
-        <a-button type="primary" html-type="submit">搜索</a-button>
+        <a-space>
+          <a-button type="primary" html-type="submit">搜索</a-button>
+          <a-button @click="resetSearch">重置</a-button>
+        </a-space>
       </a-form-item>
     </a-form>
     <a-divider />
@@ -33,8 +36,10 @@
       :columns="columns"
       :data-source="data"
       :pagination="pagination"
+      :loading="loading"
+      :row-key="getRowKey"
+      :scroll="{ x: 1200 }"
       @change="doTableChange"
-      :scroll="{ x: 1400 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'message'">
@@ -44,21 +49,16 @@
         </template>
         <template v-else-if="column.dataIndex === 'messageType'">
           <a-tag :color="record.messageType === 'user' ? 'blue' : 'green'">
-            {{ record.messageType === 'user' ? '用户消息' : 'AI消息' }}
+            {{ record.messageType === 'user' ? '用户消息' : 'AI 消息' }}
           </a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'createTime'">
           {{ formatTime(record.createTime) }}
         </template>
         <template v-else-if="column.key === 'action'">
-          <a-space>
-            <a-button type="primary" size="small" @click="viewAppChat(record.appId)">
-              查看对话
-            </a-button>
-            <a-popconfirm title="确定要删除这条消息吗？" @confirm="deleteMessage(record.id)">
-              <a-button danger size="small">删除</a-button>
-            </a-popconfirm>
-          </a-space>
+          <a-button type="link" size="small" @click="viewAppChat(record.appId)">
+            查看所属对话
+          </a-button>
         </template>
       </template>
     </a-table>
@@ -109,7 +109,7 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 180,
+    width: 130,
     fixed: 'right',
   },
 ]
@@ -117,6 +117,7 @@ const columns = [
 // 数据
 const data = ref<API.ChatHistory[]>([])
 const total = ref(0)
+const loading = ref(false)
 
 // 搜索条件
 const searchParams = reactive<API.ChatHistoryQueryRequest>({
@@ -126,11 +127,12 @@ const searchParams = reactive<API.ChatHistoryQueryRequest>({
 
 // 获取数据
 const fetchData = async () => {
+  loading.value = true
   try {
     const res = await listAllChatHistoryByPageForAdmin({
       ...searchParams,
     })
-    if (res.data.data) {
+    if (res.data.code === 0 && res.data.data) {
       data.value = res.data.data.records ?? []
       total.value = res.data.data.totalRow ?? 0
     } else {
@@ -139,12 +141,14 @@ const fetchData = async () => {
   } catch (error) {
     console.error('获取数据失败：', error)
     message.error('获取数据失败')
+  } finally {
+    loading.value = false
   }
 }
 
 // 页面加载时请求一次
 onMounted(() => {
-  fetchData()
+  void fetchData()
 })
 
 // 分页参数
@@ -162,38 +166,36 @@ const pagination = computed(() => {
 const doTableChange = (page: { current: number; pageSize: number }) => {
   searchParams.pageNum = page.current
   searchParams.pageSize = page.pageSize
-  fetchData()
+  void fetchData()
 }
 
 // 搜索
 const doSearch = () => {
-  // 重置页码
   searchParams.pageNum = 1
-  fetchData()
+  void fetchData()
+}
+
+// 重置搜索条件
+const resetSearch = () => {
+  Object.assign(searchParams, {
+    pageNum: 1,
+    pageSize: 10,
+    message: undefined,
+    messageType: undefined,
+    appId: undefined,
+    userId: undefined,
+  })
+  void fetchData()
 }
 
 // 查看应用对话
 const viewAppChat = (appId: API.EntityId | undefined) => {
   if (appId) {
-    router.push(`/app/chat/${appId}`)
+    void router.push(`/app/chat/${appId}`)
   }
 }
 
-// 删除消息
-const deleteMessage = async (id: API.EntityId | undefined) => {
-  if (!id) return
-
-  try {
-    // 注意：这里需要后端提供删除对话历史的接口
-    // 目前先显示成功，实际实现需要调用删除接口
-    message.success('删除成功')
-    // 刷新数据
-    fetchData()
-  } catch (error) {
-    console.error('删除失败：', error)
-    message.error('删除失败')
-  }
-}
+const getRowKey = (record: API.ChatHistory) => String(record.id)
 </script>
 
 <style scoped>

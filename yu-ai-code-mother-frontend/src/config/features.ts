@@ -1,12 +1,17 @@
 /**
  * 后端能力开关。
  *
- * 当前后端已经支持应用生成与部署，但尚未提供对话历史和代码下载接口。
- * 后续补齐对应接口后，只需在环境变量中开启，无需重新改页面结构。
+ * 对话历史接口已经接入，默认开启；代码下载接口仍在开发中，默认关闭。
+ * 环境变量可用于临时覆盖默认值，方便前后端分阶段联调。
  */
-const isEnabled = (value: string | undefined) => value === 'true'
+const isEnabled = (value: string | undefined, defaultValue: boolean) => {
+  if (value === undefined || value === '') {
+    return defaultValue
+  }
+  return value === 'true'
+}
 
 export const BACKEND_FEATURES = Object.freeze({
-  chatHistory: isEnabled(import.meta.env.VITE_ENABLE_CHAT_HISTORY),
-  codeDownload: isEnabled(import.meta.env.VITE_ENABLE_CODE_DOWNLOAD),
+  chatHistory: isEnabled(import.meta.env.VITE_ENABLE_CHAT_HISTORY, true),
+  codeDownload: isEnabled(import.meta.env.VITE_ENABLE_CODE_DOWNLOAD, false),
 })

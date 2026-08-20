@@ -58,8 +58,7 @@ const createApp = async () => {
 
     if (res.data.code === 0 && res.data.data) {
       message.success('应用创建成功')
-      // 标记为新建应用，让对话页自动发送初始化提示词。
-      // 当前后端还没有对话历史接口，不能依赖历史记录判断是否需要首次生成。
+      // 携带一次性标记；若历史接口被临时关闭，对话页仍能完成首次生成。
       const appId = String(res.data.data)
       await router.push({
         path: `/app/chat/${appId}`,

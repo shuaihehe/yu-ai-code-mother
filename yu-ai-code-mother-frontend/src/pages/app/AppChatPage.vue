@@ -423,7 +423,7 @@ const fetchAppInfo = async () => {
       }
 
       const autoGenerateRequested = route.query.autoGenerate === '1'
-      // 有历史接口时通过空历史判断首次生成；当前阶段则只响应新建应用携带的标记，
+      // 有历史接口时通过空历史判断首次生成；接口被临时关闭时只响应新建应用标记，
       // 避免用户刷新页面时重复调用 AI。
       const shouldAutoGenerate = BACKEND_FEATURES.chatHistory || autoGenerateRequested
       if (
