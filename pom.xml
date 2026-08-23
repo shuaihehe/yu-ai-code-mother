@@ -105,7 +105,18 @@
             <artifactId>langchain4j-reactor</artifactId>
             <version>1.18.1-beta28</version>
         </dependency>
-
+        <!-- LangChain4j 社区版 Redis starter：提供 RedisChatMemoryStore 及其自动配置，用于持久化会话记忆 -->
+        <!-- 注意：本项目是 Spring Boot 4，需用带 boot4 后缀的版本；不带 boot4 的是 Spring Boot 3 版本 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-redis-spring-boot4-starter</artifactId>
+            <version>1.18.0-beta28</version>
+        </dependency>
+        <!-- 本地缓存 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
     </dependencies>
 
 	<build>

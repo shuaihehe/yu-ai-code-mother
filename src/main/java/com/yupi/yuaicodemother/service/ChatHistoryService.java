@@ -6,6 +6,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.yupi.yuaicodemother.model.dto.chathistory.ChatHistoryQueryRequest;
 import com.yupi.yuaicodemother.model.entity.ChatHistory;
 import com.yupi.yuaicodemother.model.enums.ChatHistoryMessageTypeEnum;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 
 import java.time.LocalDateTime;
 
@@ -52,4 +53,14 @@ public interface ChatHistoryService extends IService<ChatHistory> {
      * @return 是否执行成功
      */
     boolean removeByAppId(Long appId);
+
+    /**
+     * 加载对话历史到内存
+     *
+     * @param appId 应用 id
+     * @param chatMemory 内存
+     * @param maxCount 最大数量
+     * @return 加载的数量
+     */
+    int loadChatHistoryMemory(long appId, MessageWindowChatMemory chatMemory, int maxCount);
 }

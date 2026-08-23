@@ -1,6 +1,7 @@
 package com.yupi.yuaicodemother.core;
 
 import com.yupi.yuaicodemother.ai.AiCodeGeneratorService;
+import com.yupi.yuaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.yupi.yuaicodemother.ai.model.HtmlCodeResult;
 import com.yupi.yuaicodemother.ai.model.MultiFileCodeResult;
 import com.yupi.yuaicodemother.core.parser.CodeParserExecutor;
@@ -23,7 +24,7 @@ import java.io.File;
 public class AiCodeGeneratorFacade {
 
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     /**
      * 统一入口：根据类型生成代码并保存
@@ -36,12 +37,13 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
+        // 根据 appId 获取相应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenTypeEnum) {
-            // case HTML -> yield generateAndSaveHtmlCode(userMessage);
             case HTML:
-                yield generateAndSaveHtmlCode(userMessage, appId);
+                yield generateAndSaveHtmlCode(userMessage, aiCodeGeneratorService, appId);
             case MULTI_FILE:
-                yield generateAndSaveMultiFileCode(userMessage, appId);
+                yield generateAndSaveMultiFileCode(userMessage, aiCodeGeneratorService, appId);
             default:
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码生成类型");
         };
@@ -58,12 +60,13 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
+        // 根据 appId 获取相应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenTypeEnum) {
-            // case HTML -> yield generateAndSaveHtmlCode(userMessage);
             case HTML:
-                yield generateAndSaveHtmlCodeStream(userMessage, appId);
+                yield generateAndSaveHtmlCodeStream(userMessage, aiCodeGeneratorService, appId);
             case MULTI_FILE:
-                yield generateAndSaveMultiFileCodeStream(userMessage, appId);
+                yield generateAndSaveMultiFileCodeStream(userMessage, aiCodeGeneratorService, appId);
             default:
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码生成类型");
         };
@@ -72,9 +75,11 @@ public class AiCodeGeneratorFacade {
     /**
      * 根据用户提示词生成 HTML 代码并保存 (流式)
      * @param userMessage 用户提示词
+     * @param aiCodeGeneratorService AI 代码生成服务实例
+     * @param appId 应用 id
      * @return 返回流式代码片段
      */
-    private Flux<String> generateAndSaveHtmlCodeStream(String userMessage, Long appId) {
+    private Flux<String> generateAndSaveHtmlCodeStream(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
         Flux<String> result = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
         return processCodeStream(result, CodeGenTypeEnum.HTML, appId);
     }
@@ -110,9 +115,11 @@ public class AiCodeGeneratorFacade {
     /**
      * 根据用户提示词生成多文件代码并保存 (流式)
      * @param userMessage 用户提示词
+     * @param aiCodeGeneratorService AI 代码生成服务实例
+     * @param appId 应用 id
      * @return 返回流式代码片段
      */
-    private Flux<String> generateAndSaveMultiFileCodeStream(String userMessage, Long appId) {
+    private Flux<String> generateAndSaveMultiFileCodeStream(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
         Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         return processCodeStream(result, CodeGenTypeEnum.MULTI_FILE, appId);
     }
@@ -129,12 +136,12 @@ public class AiCodeGeneratorFacade {
         return saveDir;
     }
 
-    private File generateAndSaveHtmlCode(String userMessage, Long appId) {
+    private File generateAndSaveHtmlCode(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
         HtmlCodeResult htmlCodeResult = aiCodeGeneratorService.generateHtmlCode(userMessage);
         return processCode(htmlCodeResult, CodeGenTypeEnum.HTML, appId);
     }
 
-    private File generateAndSaveMultiFileCode(String userMessage, Long appId) {
+    private File generateAndSaveMultiFileCode(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
         MultiFileCodeResult multiFileCodeResult = aiCodeGeneratorService.generateMultiFileCode(userMessage);
         return processCode(multiFileCodeResult, CodeGenTypeEnum.MULTI_FILE, appId);
     }
