@@ -7,12 +7,21 @@ spring:
     url: jdbc:mysql://localhost:3306/yu_ai_code_mother
     username: root
     password: 123456
+  # session 配置（store-type 自 Spring Boot 3 起已移除，无需也无法指定；
+  # 只要引入 spring-session-data-redis 依赖且存在 Redis 连接工厂，就会自动存入 Redis）
+  session:
+    # session 30 天过期
+    timeout: 2592000
   profiles:
     active: local
 server:
   port: 8123
   servlet:
     context-path: /api
+    # cookie 30 天过期
+    session:
+      cookie:
+        max-age: 2592000
 # springdoc-openapi
 springdoc:
   swagger-ui:

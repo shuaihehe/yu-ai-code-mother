@@ -117,6 +117,20 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
+        <!-- Spring Session + Redis
+             Spring Boot 4 起，Session 自动配置被拆入独立模块，
+             必须引入 spring-boot-starter-session-data-redis 才会创建 SessionRepository；
+             仅引入 spring-session-data-redis 不会生效（无任何提示） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-session-data-redis</artifactId>
+        </dependency>
+        <!-- Redis 连接工厂自动配置（Lettuce）-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
     </dependencies>
 
 	<build>
