@@ -38,7 +38,7 @@ public class AiCodeGeneratorFacade {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
         // 根据 appId 获取相应的 AI 服务实例
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenTypeEnum);
         return switch (codeGenTypeEnum) {
             case HTML:
                 yield generateAndSaveHtmlCode(userMessage, aiCodeGeneratorService, appId);
@@ -60,13 +60,15 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
-        // 根据 appId 获取相应的 AI 服务实例
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
+        // 根据 appId 和代码生成类型获取相应的 AI 服务实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenTypeEnum);
         return switch (codeGenTypeEnum) {
             case HTML:
                 yield generateAndSaveHtmlCodeStream(userMessage, aiCodeGeneratorService, appId);
             case MULTI_FILE:
                 yield generateAndSaveMultiFileCodeStream(userMessage, aiCodeGeneratorService, appId);
+            case VUE_PROJECT:
+                yield generateVueProjectCodeStream(userMessage, aiCodeGeneratorService, appId);
             default:
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码生成类型");
         };
@@ -122,6 +124,18 @@ public class AiCodeGeneratorFacade {
     private Flux<String> generateAndSaveMultiFileCodeStream(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
         Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         return processCodeStream(result, CodeGenTypeEnum.MULTI_FILE, appId);
+    }
+
+    /**
+     * 生成 Vue 项目代码 (流式)
+     * Vue 工程模式下，文件由 AI 工具 (FileWriteTool) 直接写入磁盘，无需再解析和保存
+     * @param userMessage 用户提示词
+     * @param aiCodeGeneratorService AI 代码生成服务实例
+     * @param appId 应用 id
+     * @return 返回流式代码片段
+     */
+    private Flux<String> generateVueProjectCodeStream(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
+        return aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
     }
 
     /**
