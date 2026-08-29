@@ -9,6 +9,7 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.guardrail.ChatExecutor;
 import dev.langchain4j.guardrail.GuardrailRequestParams;
 import dev.langchain4j.guardrail.OutputGuardrailRequest;
+import dev.langchain4j.invocation.InvocationContext;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -39,6 +40,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
     private final ChatExecutor chatExecutor;
     private final AiServiceContext context;
     private final Object memoryId;
+    private final InvocationContext invocationContext;
     private final GuardrailRequestParams commonGuardrailParams;
     private final Object methodKey;
 
@@ -62,6 +64,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
             ChatExecutor chatExecutor,
             AiServiceContext context,
             Object memoryId,
+            InvocationContext invocationContext,
             Consumer<String> partialResponseHandler,
             BiConsumer<Integer, ToolExecutionRequest> partialToolExecutionRequestHandler,
             BiConsumer<Integer, ToolExecutionRequest> completeToolExecutionRequestHandler,
@@ -77,6 +80,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
         this.chatExecutor = ensureNotNull(chatExecutor, "chatExecutor");
         this.context = ensureNotNull(context, "context");
         this.memoryId = ensureNotNull(memoryId, "memoryId");
+        this.invocationContext = ensureNotNull(invocationContext, "invocationContext");
         this.methodKey = methodKey;
 
         this.partialResponseHandler = ensureNotNull(partialResponseHandler, "partialResponseHandler");
@@ -129,6 +133,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                     ToolExecution toolExecution = ToolExecution.builder()
                             .request(toolExecutionRequest)
                             .result(toolExecutionResult)
+                            .invocationContext(invocationContext)
                             .build();
                     toolExecutionHandler.accept(toolExecution);
                 }
@@ -143,6 +148,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                     chatExecutor,
                     context,
                     memoryId,
+                    invocationContext,
                     partialResponseHandler,
                     partialToolExecutionRequestHandler,
                     completeToolExecutionRequestHandler,
