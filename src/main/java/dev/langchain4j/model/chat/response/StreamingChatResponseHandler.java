@@ -21,23 +21,21 @@ public interface StreamingChatResponseHandler {
     void onPartialResponse(String partialResponse);
 
     /**
-     * TODO
-     * TODO this callback is called as soon as partial tool is available
-     * TODO can be called multiple times
-     * TODO can be called for multiple tool executions,
-     * TODO give example of how this and other callback can be called
-     * @param index TODO
-     * @param partialToolExecutionRequest TODO
+     * Invoked each time the model generates a partial tool execution request (a streaming fragment) in a tool call response.
+     * Can be called multiple times for a single tool execution request, and for multiple tool executions.
+     *
+     * @param index                     The index of the tool execution request within the current response.
+     * @param partialToolExecutionRequest The partial tool execution request fragment.
      */
     default void onPartialToolExecutionRequest(int index, ToolExecutionRequest partialToolExecutionRequest) {
     }
 
     /**
-     * TODO
-     * TODO this callback is called as soon as a single tool execution request is complete
-     * TODO can be called multiple times
-     * @param index TODO
-     * @param completeToolExecutionRequest TODO
+     * Invoked as soon as a single tool execution request is complete.
+     * Can be called multiple times if the model requests multiple tool executions.
+     *
+     * @param index                      The index of the tool execution request within the current response.
+     * @param completeToolExecutionRequest The complete tool execution request.
      */
     default void onCompleteToolExecutionRequest(int index, ToolExecutionRequest completeToolExecutionRequest) {
     }

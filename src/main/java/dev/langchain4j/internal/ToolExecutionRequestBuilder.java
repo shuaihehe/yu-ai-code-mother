@@ -11,8 +11,6 @@ import static dev.langchain4j.internal.Utils.isNotNullOrBlank;
 import static dev.langchain4j.internal.Utils.isNotNullOrEmpty;
 
 @Internal
-// TODO location
-// TODO name
 public class ToolExecutionRequestBuilder {
 
     private final AtomicReference<Integer> index;
@@ -71,14 +69,13 @@ public class ToolExecutionRequestBuilder {
     }
 
     public ToolExecutionRequest build() {
-        // TODO store it till complete response?
         String arguments = this.arguments.toString();
         ToolExecutionRequest toolExecutionRequest = ToolExecutionRequest.builder()
                 .id(id.get())
                 .name(name.get())
                 .arguments(arguments.isEmpty() ? "{}" : arguments)
                 .build();
-        allToolExecutionRequests.add(toolExecutionRequest); // TODO method name, rethink
+        allToolExecutionRequests.add(toolExecutionRequest);
         reset();
         return toolExecutionRequest;
     }

@@ -199,7 +199,6 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                     responseBuffer.clear();
                 }
 
-                // TODO should completeResponseHandler accept all ChatResponses that happened?
                 completeResponseHandler.accept(finalChatResponse);
             }
         }
