@@ -1,14 +1,19 @@
 package com.yupi.yuaicodemother.core;
 
+import cn.hutool.json.JSONUtil;
 import com.yupi.yuaicodemother.ai.AiCodeGeneratorService;
 import com.yupi.yuaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.yupi.yuaicodemother.ai.model.HtmlCodeResult;
 import com.yupi.yuaicodemother.ai.model.MultiFileCodeResult;
+import com.yupi.yuaicodemother.ai.model.message.AiResponseMessage;
+import com.yupi.yuaicodemother.ai.model.message.ToolExecutedMessage;
+import com.yupi.yuaicodemother.ai.model.message.ToolRequestMessage;
 import com.yupi.yuaicodemother.core.parser.CodeParserExecutor;
 import com.yupi.yuaicodemother.core.saver.CodeFileSaverExecutor;
 import com.yupi.yuaicodemother.exception.BusinessException;
 import com.yupi.yuaicodemother.exception.ErrorCode;
 import com.yupi.yuaicodemother.model.enums.CodeGenTypeEnum;
+import dev.langchain4j.service.TokenStream;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -128,14 +133,36 @@ public class AiCodeGeneratorFacade {
 
     /**
      * 生成 Vue 项目代码 (流式)
-     * Vue 工程模式下，文件由 AI 工具 (FileWriteTool) 直接写入磁盘，无需再解析和保存
+     * Vue 工程模式下，文件由 AI 工具 (FileWriteTool) 直接写入磁盘，无需再解析和保存。
+     * 将 TokenStream 回调式流转换为 Flux，并把各类事件包装为结构化 JSON 消息推送：
+     * - ai_response：AI 响应的文本片段
+     * - tool_request：AI 发起的工具调用请求
+     * - tool_executed：工具执行结果
      * @param userMessage 用户提示词
      * @param aiCodeGeneratorService AI 代码生成服务实例
      * @param appId 应用 id
-     * @return 返回流式代码片段
+     * @return 返回结构化流式消息（JSON 字符串）
      */
     private Flux<String> generateVueProjectCodeStream(String userMessage, AiCodeGeneratorService aiCodeGeneratorService, Long appId) {
-        return aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
+        TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
+        return Flux.create(sink -> {
+            tokenStream
+                    // AI 响应的文本片段
+                    .onPartialResponse(partialResponse ->
+                            sink.next(JSONUtil.toJsonStr(new AiResponseMessage(partialResponse))))
+                    // AI 发起工具调用请求（流式分片到达）
+                    .onPartialToolExecutionRequest((index, toolExecutionRequest) ->
+                            sink.next(JSONUtil.toJsonStr(new ToolRequestMessage(toolExecutionRequest))))
+                    // 工具执行完成的结果
+                    .onToolExecuted(toolExecution ->
+                            sink.next(JSONUtil.toJsonStr(new ToolExecutedMessage(toolExecution))))
+                    // 整个流式响应结束
+                    .onCompleteResponse(chatResponse -> sink.complete())
+                    // 处理过程中的异常
+                    .onError(sink::error)
+                    // 启动流式请求
+                    .start();
+        });
     }
 
     /**
