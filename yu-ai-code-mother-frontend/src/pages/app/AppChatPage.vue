@@ -32,7 +32,7 @@
           type="primary"
           @click="deployApp"
           :loading="deploying"
-          :disabled="!isOwner || isGenerating"
+          :disabled="!isOwner || isGenerating || isPreparingPreview || !previewUrl"
           :title="isOwner ? '将当前生成结果部署到服务器' : '只能部署自己的应用'"
         >
           <template #icon>
@@ -62,7 +62,7 @@
           </div>
           <!-- 加载更多按钮 -->
           <div
-            v-if="BACKEND_FEATURES.chatHistory && hasMoreHistory"
+            v-if="BACKEND_FEATURES.chatHistory && canViewChatHistory && hasMoreHistory"
             class="load-more-container"
           >
             <a-button type="link" @click="loadMoreHistory" :loading="loadingHistory" size="small">
@@ -172,6 +172,17 @@
           <h3>生成后的网页展示</h3>
           <div class="preview-actions">
             <a-button
+                v-if="appId && !isGenerating"
+                type="link"
+                :loading="isPreparingPreview"
+                @click="refreshPreview"
+            >
+              <template #icon>
+                <ReloadOutlined />
+              </template>
+              刷新预览
+            </a-button>
+            <a-button
                 v-if="isOwner && previewUrl"
                 type="link"
                 :danger="isEditMode"
@@ -193,21 +204,32 @@
           </div>
         </div>
         <div class="preview-content">
-          <div v-if="!previewUrl && !isGenerating" class="preview-placeholder">
-            <div class="placeholder-icon">🌐</div>
-            <p>网站文件生成完成后将在这里展示</p>
-          </div>
-          <div v-else-if="isGenerating" class="preview-loading">
+          <div v-if="isGenerating || isPreparingPreview" class="preview-loading">
             <a-spin size="large" />
-            <p>正在生成网站...</p>
+            <p>{{ previewLoadingText }}</p>
+            <span v-if="isPreparingPreview && isVueProject" class="preview-loading-tip">
+              首次安装依赖并构建可能需要几分钟，请耐心等待
+            </span>
           </div>
           <iframe
-              v-else
+              v-else-if="previewUrl"
               :src="previewUrl"
               class="preview-iframe"
               frameborder="0"
               @load="onIframeLoad"
           ></iframe>
+          <div v-else class="preview-placeholder">
+            <div class="placeholder-icon">🌐</div>
+            <p>{{ previewStatus || '网站文件生成完成后将在这里展示' }}</p>
+            <a-button
+                v-if="appId && messages.length > 0"
+                type="primary"
+                ghost
+                @click="refreshPreview"
+            >
+              重新检测预览
+            </a-button>
+          </div>
         </div>
       </div>
     </div>
@@ -260,6 +282,7 @@ import {
   InfoCircleOutlined,
   DownloadOutlined,
   EditOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -293,6 +316,9 @@ const historyLoaded = ref(false)
 // 预览相关
 const previewUrl = ref('')
 const previewReady = ref(false)
+const isPreparingPreview = ref(false)
+const previewStatus = ref('')
+let previewCheckId = 0
 
 // 部署相关
 const deploying = ref(false)
@@ -320,6 +346,19 @@ const isAdmin = computed(() => {
   return loginUserStore.loginUser.userRole === 'admin'
 })
 
+const canViewChatHistory = computed(() => isOwner.value || isAdmin.value)
+
+const isVueProject = computed(() => {
+  return appInfo.value?.codeGenType === CodeGenTypeEnum.VUE_PROJECT
+})
+
+const previewLoadingText = computed(() => {
+  if (isGenerating.value) {
+    return 'AI 正在生成网站...'
+  }
+  return isVueProject.value ? '代码已生成，正在构建 Vue 项目...' : '正在准备网站预览...'
+})
+
 // 应用详情相关
 const appDetailVisible = ref(false)
 
@@ -341,6 +380,11 @@ const startFromInitialPrompt = async () => {
 // 加载对话历史
 const loadChatHistory = async (isLoadMore = false) => {
   if (!appId.value || loadingHistory.value) return
+  if (!canViewChatHistory.value) {
+    historyLoaded.value = true
+    hasMoreHistory.value = false
+    return
+  }
   loadingHistory.value = true
   try {
     const params: API.listAppChatHistoryParams = {
@@ -409,17 +453,18 @@ const fetchAppInfo = async () => {
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
 
-      if (BACKEND_FEATURES.chatHistory) {
+      if (BACKEND_FEATURES.chatHistory && canViewChatHistory.value) {
         // 后端支持历史记录时，用历史消息判断生成状态。
         await loadChatHistory()
       } else {
-        // 当前后端尚未实现历史接口，直接尝试加载已有静态预览。
+        // 对话历史仅允许应用所有者或管理员查看，访客只加载公开预览。
         historyLoaded.value = true
-        updatePreview()
       }
 
-      if (BACKEND_FEATURES.chatHistory && messages.value.length >= 2) {
-        updatePreview()
+      const shouldTryExistingPreview =
+        !canViewChatHistory.value || !BACKEND_FEATURES.chatHistory || messages.value.length >= 2
+      if (shouldTryExistingPreview) {
+        void preparePreview()
       }
 
       const autoGenerateRequested = route.query.autoGenerate === '1'
@@ -529,9 +574,21 @@ const sendMessage = async () => {
 const generateCode = async (userMessage: string, aiMessageIndex: number) => {
   let eventSource: EventSource | null = null
   let streamCompleted = false
+  let previewBaselineSignature: string | null = null
 
   try {
     activeEventSource?.close()
+    cancelPreviewCheck()
+    previewStatus.value = ''
+
+    // 记录生成前的预览内容。再次生成时，只有检测到构建产物确实更新后才刷新 iframe，
+    // 避免 Vue 异步构建期间误加载上一次的旧页面。
+    if (appId.value) {
+      const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
+      previewBaselineSignature = await fetchPreviewSignature(
+        getStaticPreviewUrl(codeGenType, appId.value),
+      )
+    }
     // 获取 axios 配置的 baseURL
     const baseURL = request.defaults.baseURL || API_BASE_URL
 
@@ -585,11 +642,11 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
       eventSource?.close()
       activeEventSource = null
 
-      // 延迟更新预览，确保后端已完成处理
-      setTimeout(async () => {
-        await fetchAppInfo()
-        updatePreview()
-      }, 1000)
+      void preparePreview({
+        waitForBuild: true,
+        baselineSignature: previewBaselineSignature,
+        notifyOnFailure: true,
+      })
     })
 
     // 处理business-error事件（后端限流等错误）
@@ -622,17 +679,24 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
     // 处理错误
     eventSource.onerror = function () {
       if (streamCompleted || !isGenerating.value) return
-      // 检查是否是正常的连接关闭
+      // EventSource 在连接中断时也会进入 CONNECTING。关闭自动重连，避免同一条生成请求
+      // 被浏览器重复提交；只有已经收到过内容时，才把它作为缺少 done 事件的兼容性结束。
       if (eventSource?.readyState === EventSource.CONNECTING) {
+        if (!fullContent) {
+          handleError(new Error('SSE 连接在收到生成内容前中断'), aiMessageIndex)
+          return
+        }
+
         streamCompleted = true
         isGenerating.value = false
         eventSource?.close()
         activeEventSource = null
 
-        setTimeout(async () => {
-          await fetchAppInfo()
-          updatePreview()
-        }, 1000)
+        void preparePreview({
+          waitForBuild: true,
+          baselineSignature: previewBaselineSignature,
+          notifyOnFailure: true,
+        })
       } else {
         handleError(new Error('SSE连接错误'), aiMessageIndex)
       }
@@ -658,14 +722,107 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
   isGenerating.value = false
 }
 
-// 更新预览
-const updatePreview = () => {
-  if (appId.value) {
-    const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    const newPreviewUrl = getStaticPreviewUrl(codeGenType, appId.value)
-    previewUrl.value = newPreviewUrl
-    previewReady.value = true
+interface PreparePreviewOptions {
+  waitForBuild?: boolean
+  baselineSignature?: string | null
+  notifyOnFailure?: boolean
+}
+
+const PREVIEW_POLL_INTERVAL = 2000
+const VUE_BUILD_MAX_ATTEMPTS = 250
+const NORMAL_BUILD_MAX_ATTEMPTS = 20
+const EXISTING_PREVIEW_MAX_ATTEMPTS = 3
+
+const delay = (milliseconds: number) => {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
+
+const addCacheBuster = (url: string) => {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}_preview=${Date.now()}`
+}
+
+const fetchPreviewSignature = async (url: string): Promise<string | null> => {
+  try {
+    const response = await fetch(addCacheBuster(url), {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    if (!response.ok) {
+      return null
+    }
+    const content = await response.text()
+    return [response.headers.get('last-modified') || '', response.headers.get('etag') || '', content].join(
+      '|',
+    )
+  } catch (error) {
+    console.debug('预览文件暂不可用：', error)
+    return null
   }
+}
+
+const cancelPreviewCheck = () => {
+  previewCheckId += 1
+  isPreparingPreview.value = false
+}
+
+// Vue 工程由后端异步执行 npm install 和 npm run build，不能使用固定延迟判断完成。
+const preparePreview = async (options: PreparePreviewOptions = {}) => {
+  if (!appId.value) return
+
+  const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
+  const targetUrl = getStaticPreviewUrl(codeGenType, appId.value)
+  const requestId = ++previewCheckId
+  const waitForBuild = options.waitForBuild === true
+  const maxAttempts = waitForBuild
+    ? codeGenType === CodeGenTypeEnum.VUE_PROJECT
+      ? VUE_BUILD_MAX_ATTEMPTS
+      : NORMAL_BUILD_MAX_ATTEMPTS
+    : EXISTING_PREVIEW_MAX_ATTEMPTS
+
+  isPreparingPreview.value = true
+  previewReady.value = false
+  previewStatus.value = ''
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (requestId !== previewCheckId) return
+
+    const signature = await fetchPreviewSignature(targetUrl)
+    const previewExists = signature !== null
+    const previewWasUpdated =
+      options.baselineSignature === null ||
+      options.baselineSignature === undefined ||
+      signature !== options.baselineSignature
+
+    if (previewExists && previewWasUpdated) {
+      previewUrl.value = addCacheBuster(targetUrl)
+      previewStatus.value = ''
+      if (requestId === previewCheckId) {
+        isPreparingPreview.value = false
+      }
+      return
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await delay(PREVIEW_POLL_INTERVAL)
+    }
+  }
+
+  if (requestId !== previewCheckId) return
+
+  isPreparingPreview.value = false
+  previewUrl.value = ''
+  previewStatus.value = isVueProject.value
+    ? 'Vue 项目尚未构建完成，请检查后端构建日志后再刷新预览'
+    : '预览文件尚未生成，请稍后重试'
+  if (options.notifyOnFailure) {
+    message.warning(previewStatus.value)
+  }
+}
+
+const refreshPreview = () => {
+  void preparePreview({ notifyOnFailure: true })
 }
 
 // 滚动到底部
@@ -839,6 +996,7 @@ onMounted(() => {
 onUnmounted(() => {
   activeEventSource?.close()
   activeEventSource = null
+  cancelPreviewCheck()
   window.removeEventListener('message', handleIframeMessage)
   visualEditor.destroy()
 })
@@ -1070,6 +1228,16 @@ onUnmounted(() => {
 
 .preview-loading p {
   margin-top: 16px;
+}
+
+.preview-loading-tip {
+  margin-top: 4px;
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+.preview-placeholder .ant-btn {
+  margin-top: 12px;
 }
 
 .preview-iframe {
