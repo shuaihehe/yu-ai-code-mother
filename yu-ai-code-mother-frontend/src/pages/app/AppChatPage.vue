@@ -16,7 +16,6 @@
           应用详情
         </a-button>
         <a-button
-          v-if="BACKEND_FEATURES.codeDownload"
           type="primary"
           ghost
           @click="downloadCode"
@@ -261,6 +260,7 @@ import {
   getAppVoById,
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
+  downloadAppCode,
 } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum, formatCodeGenType } from '@/utils/codeGenTypes'
@@ -833,38 +833,79 @@ const scrollToBottom = () => {
 }
 
 // 下载代码
+const getDownloadFileName = (contentDisposition: string | undefined) => {
+  const fallbackFileName = `${appId.value}.zip`
+  if (!contentDisposition) {
+    return fallbackFileName
+  }
+
+  const encodedFileName = contentDisposition.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i)?.[1]
+  const plainFileName = contentDisposition.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i)
+  const fileName = encodedFileName || plainFileName?.[1] || plainFileName?.[2]
+  if (!fileName) {
+    return fallbackFileName
+  }
+
+  const normalizedFileName = fileName.trim().replace(/^"|"$/g, '')
+  try {
+    return decodeURIComponent(normalizedFileName)
+  } catch {
+    return normalizedFileName
+  }
+}
+
 const downloadCode = async () => {
   if (!appId.value) {
     message.error('应用ID不存在')
     return
   }
+  if (!isOwner.value) {
+    message.warning('只能下载自己的应用代码')
+    return
+  }
+
   downloading.value = true
   try {
-    const API_BASE_URL = request.defaults.baseURL || ''
-    const url = `${API_BASE_URL}/app/download/${appId.value}`
-    const response = await fetch(url, {
-      method: 'GET',
-      credentials: 'include',
-    })
-    if (!response.ok) {
-      throw new Error(`下载失败: ${response.status}`)
+    const response = await downloadAppCode(
+      { appId: appId.value },
+      {
+        responseType: 'blob',
+      },
+    )
+    const blob = response.data as Blob
+    const contentTypeHeader = response.headers['content-type']
+    const contentType = typeof contentTypeHeader === 'string' ? contentTypeHeader : blob.type
+
+    // 业务异常也可能以 Blob 形式返回，避免把 JSON 错误信息保存成 ZIP 文件。
+    if (!contentType.toLowerCase().includes('application/zip')) {
+      let errorMessage = '下载失败，请重试'
+      try {
+        const errorData = JSON.parse(await blob.text()) as { message?: string }
+        errorMessage = errorData.message || errorMessage
+      } catch {
+        // 响应不是 JSON 时使用统一错误提示。
+      }
+      throw new Error(errorMessage)
     }
-    // 获取文件名
-    const contentDisposition = response.headers.get('Content-Disposition')
-    const fileName = contentDisposition?.match(/filename="(.+)"/)?.[1] || `app-${appId.value}.zip`
-    // 下载文件
-    const blob = await response.blob()
+
+    const contentDispositionHeader = response.headers['content-disposition']
+    const fileName = getDownloadFileName(
+      typeof contentDispositionHeader === 'string' ? contentDispositionHeader : undefined,
+    )
     const downloadUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = downloadUrl
     link.download = fileName
+    link.style.display = 'none'
+    document.body.appendChild(link)
     link.click()
-    // 清理
-    URL.revokeObjectURL(downloadUrl)
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 100)
+
     message.success('代码下载成功')
   } catch (error) {
     console.error('下载失败：', error)
-    message.error('下载失败，请重试')
+    message.error(error instanceof Error ? error.message : '下载失败，请重试')
   } finally {
     downloading.value = false
   }

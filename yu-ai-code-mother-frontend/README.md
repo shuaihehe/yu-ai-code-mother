@@ -5,12 +5,10 @@
 目前已包含主页、用户登录与注册、用户管理、应用管理、对话历史管理、AI 流式生成、
 Vue 工程构建状态等待、应用编辑、生成结果预览和应用部署，并已与当前后端接口保持一致。
 
-当前后端已经提供对话历史接口，因此该功能默认开启；代码下载接口尚未提供，下载入口
-仍然默认关闭。可以通过环境变量覆盖：
+当前后端已经提供对话历史和代码下载接口。对话历史功能可以通过环境变量覆盖：
 
 ```sh
 VITE_ENABLE_CHAT_HISTORY=true
-VITE_ENABLE_CODE_DOWNLOAD=true
 ```
 
 部署域名 `VITE_DEPLOY_DOMAIN` 需要与后端 `AppConstant.CODE_DEPLOY_HOST` 保持一致。

@@ -11,7 +11,6 @@
  *
  * # 后端能力开关
  * VITE_ENABLE_CHAT_HISTORY=true
- * VITE_ENABLE_CODE_DOWNLOAD=false
  *
  * 生产环境可以创建 .env.production 文件：
  *
