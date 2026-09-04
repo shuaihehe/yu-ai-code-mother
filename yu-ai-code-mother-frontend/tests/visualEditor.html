@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>可视化编辑回归测试</title>
+    <style>
+      body {
+        font: 16px/1.7 system-ui;
+        margin: 32px;
+      }
+      iframe {
+        width: 480px;
+        height: 260px;
+        border: 1px solid #ddd;
+      }
+      .pass {
+        color: #237804;
+      }
+      .fail {
+        color: #cf1322;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>可视化编辑回归测试</h1>
+    <p id="status">正在执行（不调用后端、不生成代码）…</p>
+    <ol id="results"></ol>
+    <script type="module" src="./visualEditor.browser.ts"></script>
+  </body>
+</html>

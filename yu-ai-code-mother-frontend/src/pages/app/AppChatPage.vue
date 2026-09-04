@@ -133,29 +133,50 @@
           <div class="input-wrapper">
             <a-tooltip v-if="!isOwner" title="无法在别人的作品下对话哦~" placement="top">
               <a-textarea
-                  v-model:value="userInput"
+                  :key="inputRevision"
+                  :value="userInput"
+                  @update:value="handleUserInputChange"
                   :placeholder="getInputPlaceholder()"
                   :rows="4"
                   :maxlength="1000"
-                  @keydown.enter.prevent="sendMessage"
+                  @keydown="handleInputKeydown"
+                  @compositionstart="isInputComposing = true"
+                  @compositionend="isInputComposing = false"
                   :disabled="isGenerating || !isOwner"
               />
             </a-tooltip>
             <a-textarea
                 v-else
-                v-model:value="userInput"
+                :key="inputRevision"
+                :value="userInput"
+                @update:value="handleUserInputChange"
                 :placeholder="getInputPlaceholder()"
                 :rows="4"
                 :maxlength="1000"
-                @keydown.enter.prevent="sendMessage"
+                @keydown="handleInputKeydown"
+                @compositionstart="isInputComposing = true"
+                @compositionend="isInputComposing = false"
                 :disabled="isGenerating"
             />
             <div class="input-actions">
+              <a-button
+                :type="isEditMode ? 'primary' : 'default'"
+                :aria-pressed="isEditMode"
+                :disabled="!isOwner || isGenerating || isPreparingPreview || !previewReady"
+                :title="isEditMode ? '退出编辑并清除选中元素' : '选择预览中的元素后，描述修改要求'"
+                @click="toggleEditMode"
+              >
+                <template #icon>
+                  <EditOutlined />
+                </template>
+                {{ isEditMode ? '退出编辑' : '编辑模式' }}
+              </a-button>
               <a-button
                   type="primary"
                   @click="sendMessage"
                   :loading="isGenerating"
                   :disabled="!isOwner"
+                  aria-label="发送消息"
               >
                 <template #icon>
                   <SendOutlined />
@@ -181,19 +202,6 @@
               </template>
               刷新预览
             </a-button>
-            <a-button
-                v-if="isOwner && previewUrl"
-                type="link"
-                :danger="isEditMode"
-                @click="toggleEditMode"
-                :class="{ 'edit-mode-active': isEditMode }"
-                style="padding: 0; height: auto; margin-right: 12px"
-            >
-              <template #icon>
-                <EditOutlined />
-              </template>
-              {{ isEditMode ? '退出编辑' : '编辑模式' }}
-            </a-button>
             <a-button v-if="previewUrl" type="link" @click="openInNewTab">
               <template #icon>
                 <ExportOutlined />
@@ -212,7 +220,9 @@
           </div>
           <iframe
               v-else-if="previewUrl"
+              ref="previewIframe"
               :src="previewUrl"
+              title="生成网站预览"
               class="preview-iframe"
               frameborder="0"
               @load="onIframeLoad"
@@ -272,7 +282,7 @@ import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import aiAvatar from '@/assets/aiAvatar.png'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 import { BACKEND_FEATURES } from '@/config/features'
-import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
+import { VisualEditor, buildVisualEditPrompt, type ElementInfo } from '@/utils/visualEditor'
 import { isSameEntityId, normalizeEntityId } from '@/utils/entityId'
 
 import {
@@ -303,6 +313,8 @@ interface Message {
 
 const messages = ref<Message[]>([])
 const userInput = ref('')
+const inputRevision = ref(0)
+const isInputComposing = ref(false)
 const isGenerating = ref(false)
 const messagesContainer = ref<HTMLElement>()
 let activeEventSource: EventSource | null = null
@@ -316,6 +328,7 @@ const historyLoaded = ref(false)
 // 预览相关
 const previewUrl = ref('')
 const previewReady = ref(false)
+const previewIframe = ref<HTMLIFrameElement>()
 const isPreparingPreview = ref(false)
 const previewStatus = ref('')
 let previewCheckId = 0
@@ -333,8 +346,10 @@ const isEditMode = ref(false)
 const selectedElementInfo = ref<ElementInfo | null>(null)
 const visualEditor = new VisualEditor({
   onElementSelected: (elementInfo: ElementInfo) => {
+    if (!isOwner.value || !isEditMode.value || isGenerating.value) return
     selectedElementInfo.value = elementInfo
   },
+  onError: (errorMessage) => message.warning(errorMessage),
 })
 
 // 权限相关
@@ -520,39 +535,45 @@ const sendInitialMessage = async (prompt: string) => {
   await generateCode(prompt, aiMessageIndex)
 }
 
+// 同时重置受控值和 Textarea 内部状态，避免输入法/失焦事件回填已发送文本。
+const resetUserInput = () => {
+  userInput.value = ''
+  isInputComposing.value = false
+  inputRevision.value += 1
+}
+
+const handleUserInputChange = (value: string) => {
+  if (isGenerating.value || !isOwner.value) {
+    if (value) resetUserInput()
+    return
+  }
+  userInput.value = value
+}
+
+const handleInputKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter' || event.shiftKey) return
+  // 229 兼容部分浏览器在输入法确认时未正确设置 isComposing 的情况。
+  if (event.isComposing || isInputComposing.value || event.keyCode === 229) return
+  event.preventDefault()
+  void sendMessage()
+}
+
 // 发送消息
 const sendMessage = async () => {
-  if (!userInput.value.trim() || isGenerating.value) {
+  if (!userInput.value.trim() || isGenerating.value || !isOwner.value || isInputComposing.value) {
     return
   }
 
-  let message = userInput.value.trim()
-  // 如果有选中的元素，将元素信息添加到提示词中
-  if (selectedElementInfo.value) {
-    let elementContext = `\n\n选中元素信息：`
-    if (selectedElementInfo.value.pagePath) {
-      elementContext += `\n- 页面路径: ${selectedElementInfo.value.pagePath}`
-    }
-    elementContext += `\n- 标签: ${selectedElementInfo.value.tagName.toLowerCase()}\n- 选择器: ${selectedElementInfo.value.selector}`
-    if (selectedElementInfo.value.textContent) {
-      elementContext += `\n- 当前内容: ${selectedElementInfo.value.textContent.substring(0, 100)}`
-    }
-    message += elementContext
-  }
-  userInput.value = ''
+  const prompt = buildVisualEditPrompt(userInput.value, selectedElementInfo.value)
+  // 在异步流程前锁定发送并退出编辑，即使没有选中元素也要清理。
+  isGenerating.value = true
+  exitEditMode()
+  resetUserInput()
   // 添加用户消息（包含元素信息）
   messages.value.push({
     type: 'user',
-    content: message,
+    content: prompt,
   })
-
-  // 发送消息后，清除选中元素并退出编辑模式
-  if (selectedElementInfo.value) {
-    clearSelectedElement()
-    if (isEditMode.value) {
-      toggleEditMode()
-    }
-  }
 
   // 添加AI消息占位符
   const aiMessageIndex = messages.value.length
@@ -566,8 +587,7 @@ const sendMessage = async () => {
   scrollToBottom()
 
   // 开始生成
-  isGenerating.value = true
-  await generateCode(message, aiMessageIndex)
+  await generateCode(prompt, aiMessageIndex)
 }
 
 // 生成代码 - 使用 EventSource 处理流式响应
@@ -770,6 +790,7 @@ const cancelPreviewCheck = () => {
 // Vue 工程由后端异步执行 npm install 和 npm run build，不能使用固定延迟判断完成。
 const preparePreview = async (options: PreparePreviewOptions = {}) => {
   if (!appId.value) return
+  exitEditMode()
 
   const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
   const targetUrl = getStaticPreviewUrl(codeGenType, appId.value)
@@ -960,11 +981,11 @@ const openDeployedSite = () => {
 
 // iframe加载完成
 const onIframeLoad = () => {
+  exitEditMode()
   previewReady.value = true
-  const iframe = document.querySelector('.preview-iframe') as HTMLIFrameElement
+  const iframe = previewIframe.value
   if (iframe) {
     visualEditor.init(iframe)
-    visualEditor.onIframeLoad()
   }
 }
 
@@ -995,20 +1016,23 @@ const deleteApp = async () => {
 }
 
 // 可视化编辑相关函数
+const exitEditMode = () => {
+  visualEditor.disableEditMode()
+  selectedElementInfo.value = null
+  isEditMode.value = false
+}
+
 const toggleEditMode = () => {
-  // 检查 iframe 是否已经加载
-  const iframe = document.querySelector('.preview-iframe') as HTMLIFrameElement
-  if (!iframe) {
+  if (isEditMode.value) {
+    exitEditMode()
+    return
+  }
+  if (!isOwner.value || isGenerating.value || isPreparingPreview.value) return
+  if (!previewIframe.value || !previewReady.value) {
     message.warning('请等待页面加载完成')
     return
   }
-  // 确保 visualEditor 已初始化
-  if (!previewReady.value) {
-    message.warning('请等待页面加载完成')
-    return
-  }
-  const newEditMode = visualEditor.toggleEditMode()
-  isEditMode.value = newEditMode
+  isEditMode.value = visualEditor.enableEditMode()
 }
 
 const clearSelectedElement = () => {
@@ -1023,14 +1047,9 @@ const getInputPlaceholder = () => {
   return '请描述你想生成的网站，越详细效果越好哦'
 }
 
-const handleIframeMessage = (event: MessageEvent) => {
-  visualEditor.handleIframeMessage(event)
-}
-
 // 页面加载时获取应用信息
 onMounted(() => {
   void fetchAppInfo()
-  window.addEventListener('message', handleIframeMessage)
 })
 
 // 清理资源
@@ -1038,7 +1057,6 @@ onUnmounted(() => {
   activeEventSource?.close()
   activeEventSource = null
   cancelPreviewCheck()
-  window.removeEventListener('message', handleIframeMessage)
   visualEditor.destroy()
 })
 </script>
@@ -1199,13 +1217,16 @@ onUnmounted(() => {
 }
 
 .input-wrapper .ant-input {
-  padding-right: 50px;
+  padding-bottom: 48px;
 }
 
 .input-actions {
   position: absolute;
   bottom: 8px;
   right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 右侧预览区域 */
@@ -1289,6 +1310,44 @@ onUnmounted(() => {
 
 .selected-element-alert {
   margin: 0 16px;
+  flex-shrink: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.selected-element-info {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.element-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.element-item {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.element-tag {
+  font-weight: 600;
+  color: #1677ff;
+}
+
+.element-id,
+.element-class {
+  color: #666;
+}
+
+.element-selector-code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  background: #f6f8fa;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 /* 响应式设计 */
@@ -1320,71 +1379,6 @@ onUnmounted(() => {
 
   .message-content {
     max-width: 85%;
-  }
-
-  /* 选中元素信息样式 */
-  .selected-element-alert {
-    margin: 0 16px;
-  }
-
-  .selected-element-info {
-    line-height: 1.4;
-  }
-
-  .element-header {
-    margin-bottom: 8px;
-  }
-
-  .element-details {
-    margin-top: 8px;
-  }
-
-  .element-item {
-    margin-bottom: 4px;
-    font-size: 13px;
-  }
-
-  .element-item:last-child {
-    margin-bottom: 0;
-  }
-
-  .element-tag {
-    font-family: 'Monaco', 'Menlo', monospace;
-    font-size: 14px;
-    font-weight: 600;
-    color: #007bff;
-  }
-
-  .element-id {
-    color: #28a745;
-    margin-left: 4px;
-  }
-
-  .element-class {
-    color: #ffc107;
-    margin-left: 4px;
-  }
-
-  .element-selector-code {
-    font-family: 'Monaco', 'Menlo', monospace;
-    background: #f6f8fa;
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-size: 12px;
-    color: #d73a49;
-    border: 1px solid #e1e4e8;
-  }
-
-  /* 编辑模式按钮样式 */
-  .edit-mode-active {
-    background-color: #52c41a !important;
-    border-color: #52c41a !important;
-    color: white !important;
-  }
-
-  .edit-mode-active:hover {
-    background-color: #73d13d !important;
-    border-color: #73d13d !important;
   }
 }
 </style>
