@@ -148,6 +148,18 @@
             <artifactId>cos_api</artifactId>
             <version>5.6.247</version>
         </dependency>
+        <!-- LangGraph4j：core 不依赖 LangChain4j，版本独立选择，用最新稳定版即可 -->
+        <dependency>
+            <groupId>org.bsc.langgraph4j</groupId>
+            <artifactId>langgraph4j-core</artifactId>
+            <version>1.8.25</version>
+        </dependency>
+        <!-- 腾讯云DashScope Java SDK -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>dashscope-sdk-java</artifactId>
+            <version>2.22.28</version>
+        </dependency>
 
     </dependencies>
 
