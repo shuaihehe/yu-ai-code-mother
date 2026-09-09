@@ -28,6 +28,11 @@ import static org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async;
 public class CodeGenWorkflow {
 
     /**
+     * 代码质量检查最大次数，超过后不再重新生成，避免死循环浪费时间和 token
+     */
+    private static final int MAX_QUALITY_CHECK_COUNT = 5;
+
+    /**
      * 创建完整的工作流
      */
     public CompiledGraph<MessagesState<String>> createWorkflow() {
@@ -70,9 +75,13 @@ public class CodeGenWorkflow {
     private String routeAfterQualityCheck(MessagesState<String> state) {
         WorkflowContext context = WorkflowContext.getContext(state);
         QualityResult qualityResult = context.getQualityResult();
-        // 如果质检失败，重新生成代码
+        // 如果质检失败，重新生成代码（不超过最大质检次数）
         if (qualityResult == null || !qualityResult.getIsValid()) {
-            log.error("代码质检失败，需要重新生成代码");
+            if (context.getQualityCheckCount() >= MAX_QUALITY_CHECK_COUNT) {
+                log.warn("代码质检失败，但已达到最大质检次数 {} 次，强制进入后续流程", MAX_QUALITY_CHECK_COUNT);
+                return routeBuildOrSkip(state);
+            }
+            log.error("代码质检失败，需要重新生成代码（当前质检次数：{}）", context.getQualityCheckCount());
             return "fail";
         }
         // 质检通过，使用原有的构建路由逻辑

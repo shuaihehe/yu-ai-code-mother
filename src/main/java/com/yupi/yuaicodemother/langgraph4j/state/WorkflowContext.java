@@ -78,6 +78,11 @@ public class WorkflowContext implements Serializable {
      */
     private QualityResult qualityResult;
 
+    /**
+     * 代码质量检查次数（用于限制最大重试次数）
+     */
+    private int qualityCheckCount;
+
     @Serial
     private static final long serialVersionUID = 1L;
 

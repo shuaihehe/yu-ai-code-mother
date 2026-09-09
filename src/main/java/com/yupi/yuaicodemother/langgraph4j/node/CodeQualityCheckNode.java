@@ -53,6 +53,8 @@ public class CodeQualityCheckNode {
             // 3. 更新状态
             context.setCurrentStep("代码质量检查");
             context.setQualityResult(qualityResult);
+            context.setQualityCheckCount(context.getQualityCheckCount() + 1);
+            log.info("代码质量检查次数: {}", context.getQualityCheckCount());
             return WorkflowContext.saveContext(context);
         });
     }
