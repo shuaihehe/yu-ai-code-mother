@@ -25,6 +25,7 @@ import com.yupi.yuaicodemother.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -247,6 +248,24 @@ public class AppController {
      * 分页查询精选应用（单页最多 20 条）
      */
     @PostMapping("/good/list/page/vo")
+    @Cacheable(
+            // 缓存空间名（cacheNames 的别名），对应 RedisCacheManagerConfig 中该空间 5 分钟过期的配置
+            value = "good_app_page",
+            // 缓存 key：SpEL 调用静态方法，将查询条件对象 JSON + MD5 压缩为 32 位字符串，相同条件命中同一缓存
+            key = "T(com.yupi.yuaicodemother.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
+            // 缓存准入条件：只缓存前 10 页（流量集中在首页，深页冷数据不缓存，防止缓存污染）
+            condition = "#appQueryRequest.pageNum <= 10"
+    )
+    /**
+     * Redis 的一条记录：
+     * ┌──────────────────────────────────────────────────────┬─────────────────────────────┐
+     * │ KEY                                                   │ VALUE                       │
+     * │ good_app_page::e10adc3949ba59abbe56e057f20f883e      │ {"code":0,"data":{...}}     │
+     * └──────────────────────────────────────────────────────┴─────────────────────────────┘
+     *         │                     │
+     *         │                     └─ key 属性：MD5(查询条件)，区分"第1页"/"第2页"等不同查询
+     *         └─ value 属性（缓存名）：固定前缀，区分"精选应用缓存"/"其他业务缓存"
+     */
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
         checkUserPageRequest(appQueryRequest);
         AppQueryRequest queryRequest = buildUserQueryRequest(appQueryRequest);
