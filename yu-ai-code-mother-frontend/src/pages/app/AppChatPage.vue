@@ -142,7 +142,7 @@
                   @keydown="handleInputKeydown"
                   @compositionstart="isInputComposing = true"
                   @compositionend="isInputComposing = false"
-                  :disabled="isGenerating || !isOwner"
+                  :disabled="isGenerating || isPreparingPreview || !isOwner"
               />
             </a-tooltip>
             <a-textarea
@@ -156,7 +156,7 @@
                 @keydown="handleInputKeydown"
                 @compositionstart="isInputComposing = true"
                 @compositionend="isInputComposing = false"
-                :disabled="isGenerating"
+                :disabled="isGenerating || isPreparingPreview"
             />
             <div class="input-actions">
               <a-button
@@ -175,7 +175,7 @@
                   type="primary"
                   @click="sendMessage"
                   :loading="isGenerating"
-                  :disabled="!isOwner"
+                  :disabled="!isOwner || isPreparingPreview"
                   aria-label="发送消息"
               >
                 <template #icon>
@@ -202,7 +202,11 @@
               </template>
               刷新预览
             </a-button>
-            <a-button v-if="previewUrl" type="link" @click="openInNewTab">
+            <a-button
+                v-if="previewUrl && !isGenerating && !isPreparingPreview"
+                type="link"
+                @click="openInNewTab"
+            >
               <template #icon>
                 <ExportOutlined />
               </template>
@@ -272,6 +276,7 @@ import {
   deleteApp as deleteAppApi,
   downloadAppCode,
 } from '@/api/appController'
+import { getBuildStatus } from '@/api/buildStatus'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum, formatCodeGenType } from '@/utils/codeGenTypes'
 import request from '@/request'
@@ -331,6 +336,8 @@ const previewReady = ref(false)
 const previewIframe = ref<HTMLIFrameElement>()
 const isPreparingPreview = ref(false)
 const previewStatus = ref('')
+const buildProgressText = ref('')
+let buildStatusRequest: AbortController | null = null
 let previewCheckId = 0
 
 // 部署相关
@@ -371,7 +378,8 @@ const previewLoadingText = computed(() => {
   if (isGenerating.value) {
     return 'AI 正在生成网站...'
   }
-  return isVueProject.value ? '代码已生成，正在构建 Vue 项目...' : '正在准备网站预览...'
+  return buildProgressText.value ||
+    (isVueProject.value ? '正在查询 Vue 项目构建状态...' : '正在准备网站预览...')
 })
 
 // 应用详情相关
@@ -477,7 +485,7 @@ const fetchAppInfo = async () => {
       }
 
       const shouldTryExistingPreview =
-        !canViewChatHistory.value || !BACKEND_FEATURES.chatHistory || messages.value.length >= 2
+        isVueProject.value || !canViewChatHistory.value || !BACKEND_FEATURES.chatHistory || messages.value.length >= 2
       if (shouldTryExistingPreview) {
         void preparePreview()
       }
@@ -543,7 +551,7 @@ const resetUserInput = () => {
 }
 
 const handleUserInputChange = (value: string) => {
-  if (isGenerating.value || !isOwner.value) {
+  if (isGenerating.value || isPreparingPreview.value || !isOwner.value) {
     if (value) resetUserInput()
     return
   }
@@ -560,7 +568,10 @@ const handleInputKeydown = (event: KeyboardEvent) => {
 
 // 发送消息
 const sendMessage = async () => {
-  if (!userInput.value.trim() || isGenerating.value || !isOwner.value || isInputComposing.value) {
+  if (
+    !userInput.value.trim() || isGenerating.value || isPreparingPreview.value ||
+    !isOwner.value || isInputComposing.value
+  ) {
     return
   }
 
@@ -601,9 +612,8 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
     cancelPreviewCheck()
     previewStatus.value = ''
 
-    // 记录生成前的预览内容。再次生成时，只有检测到构建产物确实更新后才刷新 iframe，
-    // 避免 Vue 异步构建期间误加载上一次的旧页面。
-    if (appId.value) {
+    // HTML / 多文件模式保留文件检测；Vue 模式通过后端构建状态确认完成。
+    if (appId.value && !isVueProject.value) {
       const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
       previewBaselineSignature = await fetchPreviewSignature(
         getStaticPreviewUrl(codeGenType, appId.value),
@@ -690,6 +700,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         isGenerating.value = false
         eventSource?.close()
         activeEventSource = null
+        if (isVueProject.value) void preparePreview()
       } catch (parseError) {
         console.error('解析错误事件失败:', parseError, '原始数据:', event.data)
         handleError(new Error('服务器返回错误'), aiMessageIndex)
@@ -740,6 +751,7 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
   }
   message.error('生成失败，请重试')
   isGenerating.value = false
+  if (isVueProject.value) void preparePreview()
 }
 
 interface PreparePreviewOptions {
@@ -784,16 +796,55 @@ const fetchPreviewSignature = async (url: string): Promise<string | null> => {
 
 const cancelPreviewCheck = () => {
   previewCheckId += 1
+  buildStatusRequest?.abort()
+  buildStatusRequest = null
   isPreparingPreview.value = false
 }
 
-// Vue 工程由后端异步执行 npm install 和 npm run build，不能使用固定延迟判断完成。
+// Vue 创建者 / 管理员查询真实状态；公开访客和非 Vue 项目使用静态预览。
+const prepareVuePreview = async (targetUrl: string, requestId: number, options: PreparePreviewOptions) => {
+  const controller = new AbortController()
+  buildStatusRequest = controller
+  try {
+    for (let attempt = 0; attempt < VUE_BUILD_MAX_ATTEMPTS; attempt += 1) {
+      if (requestId !== previewCheckId) return
+      const status = await getBuildStatus(appId.value!, controller.signal)
+      if (requestId !== previewCheckId) return
+      buildProgressText.value = status.message
+      if (status.status === 'completed' || (status.status === 'ready' && !options.waitForBuild)) {
+        if (!status.distExists) throw new Error('构建产物已丢失，请重新生成网站')
+        const versionUrl = status.buildId
+          ? `${targetUrl}?buildId=${encodeURIComponent(status.buildId)}`
+          : targetUrl
+        previewUrl.value = addCacheBuster(versionUrl)
+        return
+      }
+      if (status.status !== 'building' && status.status !== 'generating') {
+        throw new Error(status.message || '项目尚未构建，请重新生成网站')
+      }
+      await delay(PREVIEW_POLL_INTERVAL)
+    }
+    throw new Error('等待构建超时，可点击刷新预览继续查询状态')
+  } catch (error) {
+    if (requestId !== previewCheckId) return
+    previewUrl.value = ''
+    previewStatus.value = error instanceof Error ? error.message : '查询构建状态失败，请刷新预览重试'
+    if (options.notifyOnFailure) message.warning(previewStatus.value)
+  } finally {
+    if (requestId === previewCheckId) {
+      isPreparingPreview.value = false
+      buildStatusRequest = null
+    }
+  }
+}
+
 const preparePreview = async (options: PreparePreviewOptions = {}) => {
   if (!appId.value) return
   exitEditMode()
 
   const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
   const targetUrl = getStaticPreviewUrl(codeGenType, appId.value)
+  buildStatusRequest?.abort()
   const requestId = ++previewCheckId
   const waitForBuild = options.waitForBuild === true
   const maxAttempts = waitForBuild
@@ -805,11 +856,18 @@ const preparePreview = async (options: PreparePreviewOptions = {}) => {
   isPreparingPreview.value = true
   previewReady.value = false
   previewStatus.value = ''
+  buildProgressText.value = ''
+
+  if (codeGenType === CodeGenTypeEnum.VUE_PROJECT && canViewChatHistory.value) {
+    await prepareVuePreview(targetUrl, requestId, options)
+    return
+  }
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (requestId !== previewCheckId) return
 
     const signature = await fetchPreviewSignature(targetUrl)
+    if (requestId !== previewCheckId) return
     const previewExists = signature !== null
     const previewWasUpdated =
       options.baselineSignature === null ||

@@ -19,6 +19,8 @@ import com.yupi.yuaicodemother.model.entity.App;
 import com.yupi.yuaicodemother.model.entity.User;
 import com.yupi.yuaicodemother.model.enums.CodeGenTypeEnum;
 import com.yupi.yuaicodemother.model.vo.AppVO;
+import com.yupi.yuaicodemother.model.vo.BuildStatusVO;
+import com.yupi.yuaicodemother.core.builder.BuildStatusStore;
 import com.yupi.yuaicodemother.service.AppService;
 import com.yupi.yuaicodemother.service.ProjectDownloadService;
 import com.yupi.yuaicodemother.service.UserService;
@@ -64,6 +66,27 @@ public class AppController {
 
     @Resource
     private ProjectDownloadService projectDownloadService;
+
+    @Resource
+    private BuildStatusStore buildStatusStore;
+
+    /** 查询本轮 Vue 构建状态，仅创建者和管理员可访问。 */
+    @GetMapping("/build/status/{appId}")
+    public BaseResponse<BuildStatusVO> getBuildStatus(@PathVariable Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID无效");
+        User loginUser = userService.getLoginUser(request);
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        ThrowUtils.throwIf(!app.getUserId().equals(loginUser.getId())
+                        && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole()),
+                ErrorCode.NO_AUTH_ERROR, "无权限查询构建状态");
+        ThrowUtils.throwIf(!CodeGenTypeEnum.VUE_PROJECT.getValue().equals(app.getCodeGenType()),
+                ErrorCode.PARAMS_ERROR, "仅 Vue 工程支持构建状态查询");
+        String path = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + "vue_project_" + appId;
+        BuildStatusVO status = buildStatusStore.getStatus(path);
+        status.setAppId(appId);
+        return ResultUtils.success(status);
+    }
 
     /**
      * 下载应用代码

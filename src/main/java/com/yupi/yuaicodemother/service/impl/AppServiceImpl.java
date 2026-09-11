@@ -11,6 +11,7 @@ import com.yupi.yuaicodemother.ai.AiCodeGenTypeRoutingService;
 import com.yupi.yuaicodemother.constant.AppConstant;
 import com.yupi.yuaicodemother.core.AiCodeGeneratorFacade;
 import com.yupi.yuaicodemother.core.builder.VueProjectBuilder;
+import com.yupi.yuaicodemother.core.builder.BuildStatusStore;
 import com.yupi.yuaicodemother.core.handler.StreamHandlerExecutor;
 import com.yupi.yuaicodemother.exception.BusinessException;
 import com.yupi.yuaicodemother.exception.ErrorCode;
@@ -33,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.io.File;
 import java.io.IOException;
@@ -74,6 +76,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+
+    @Resource
+    private BuildStatusStore buildStatusStore;
 
     @Resource
     private ScreenshotService screenshotService;
@@ -182,14 +187,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "代码生成类型错误");
-        // 5. AI 调用前先保存用户消息到数据库，保证用户发送内容不会丢失
-        Long userId = loginUser.getId();
-        chatHistoryService.addChatMessage(appId, userId, message,
-                ChatHistoryMessageTypeEnum.USER);
-        // 6. 调用 AI 生成代码（流式）
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集 AI 响应的内容，并且在完成后记录到对话历史
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        // 订阅时占用本轮任务，防止多窗口在同一项目上交叉生成 / 构建。
+        return Flux.defer(() -> {
+            String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
+            boolean vueProject = codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT;
+            String buildId = vueProject ? buildStatusStore.start(projectPath, "generating") : null;
+            try {
+                chatHistoryService.addChatMessage(appId, loginUser.getId(), message,
+                        ChatHistoryMessageTypeEnum.USER);
+                Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+                Flux<String> result = streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+                if (!vueProject) return result;
+                // 必须先记录 building，再让控制器发送 done；npm 仍在后台运行。
+                return result.concatWith(Mono.<String>fromRunnable(() ->
+                                vueProjectBuilder.buildGeneratedProjectAsync(projectPath, buildId)))
+                        .doOnError(error -> buildStatusStore.transition(projectPath, buildId, "generating", "failed", "代码生成失败，请重试"))
+                        // TokenStream 无法随 SSE 断开可靠取消：保留后台订阅直至结束，
+                        // 防止刷新后释放任务锁，而旧工具仍在写文件。仅缓存终止信号。
+                        .cache(0);
+            } catch (Exception e) {
+                if (vueProject) buildStatusStore.transition(projectPath, buildId, "generating", "failed", "代码生成失败，请重试");
+                return Flux.error(e);
+            }
+        });
 
     }
 
