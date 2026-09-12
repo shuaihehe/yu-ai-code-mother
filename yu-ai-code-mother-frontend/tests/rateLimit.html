@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>限流联调测试</title>
+  </head>
+  <body>
+    <h1>限流联调测试</h1>
+    <p>真实后端与 Redis、原生 EventSource、真实对话组件；仅模拟页面资料。未登录请求按 IP 限流，预填额度使用应用 ID 0，页面请求使用模拟 ID，不调用 AI。</p>
+    <p id="status">准备测试</p>
+    <ol id="results"></ol>
+    <div id="app"></div>
+    <script type="module" src="./rateLimit.browser.ts"></script>
+  </body>
+</html>

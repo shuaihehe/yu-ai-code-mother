@@ -683,12 +683,21 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
     eventSource.addEventListener('business-error', function (event: MessageEvent) {
       if (streamCompleted) return
 
+      // 业务错误是终止事件，解析失败时也不能再把后续 done 当作生成成功。
+      streamCompleted = true
+      isGenerating.value = false
+      eventSource?.close()
+      activeEventSource = null
+
       try {
-        const errorData = JSON.parse(event.data)
+        const errorData = JSON.parse(event.data) as { message?: unknown } | null
         console.error('SSE业务错误事件:', errorData)
 
         // 显示具体的错误信息
-        const errorMessage = errorData.message || '生成过程中出现错误'
+        const errorMessage =
+          typeof errorData?.message === 'string' && errorData.message.trim()
+            ? errorData.message
+            : '生成过程中出现错误'
         const aiMessage = messages.value[aiMessageIndex]
         if (aiMessage) {
           aiMessage.content = `❌ ${errorMessage}`
@@ -696,10 +705,6 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         }
         message.error(errorMessage)
 
-        streamCompleted = true
-        isGenerating.value = false
-        eventSource?.close()
-        activeEventSource = null
         if (isVueProject.value) void preparePreview()
       } catch (parseError) {
         console.error('解析错误事件失败:', parseError, '原始数据:', event.data)
