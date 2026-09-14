@@ -13,6 +13,7 @@ const loginUserStore = useLoginUserStore()
 // 用户提示词
 const userPrompt = ref('')
 const creating = ref(false)
+const isPromptComposing = ref(false)
 
 // 我的应用数据
 const myApps = ref<API.AppVO[]>([])
@@ -39,6 +40,8 @@ const setPrompt = (prompt: string) => {
 
 // 创建应用
 const createApp = async () => {
+  if (creating.value || isPromptComposing.value) return
+
   if (!userPrompt.value.trim()) {
     message.warning('请输入应用描述')
     return
@@ -73,6 +76,16 @@ const createApp = async () => {
   } finally {
     creating.value = false
   }
+}
+
+// Enter 发送，Shift+Enter 换行；中文输入法确认候选词时不发送。
+const handlePromptKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter' || event.shiftKey) return
+  if (event.isComposing || isPromptComposing.value || event.keyCode === 229) return
+
+  event.preventDefault()
+  if (event.repeat || !userPrompt.value.trim()) return
+  void createApp()
 }
 
 // 加载我的应用
@@ -170,10 +183,13 @@ onUnmounted(() => {
       <div class="input-section">
         <a-textarea
           v-model:value="userPrompt"
-          placeholder="帮我创建个人博客网站"
+          placeholder="帮我创建个人博客网站（Enter 发送，Shift+Enter 换行）"
           :rows="4"
           :maxlength="1000"
           class="prompt-input"
+          @keydown="handlePromptKeydown"
+          @compositionstart="isPromptComposing = true"
+          @compositionend="isPromptComposing = false"
         />
         <div class="input-actions">
           <a-button type="primary" size="large" @click="createApp" :loading="creating">

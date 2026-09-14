@@ -8,6 +8,7 @@ import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.yupi.yuaicodemother.ai.AiCodeGenTypeRoutingService;
+import com.yupi.yuaicodemother.ai.guardrail.PromptSafetyInputGuardrail;
 import com.yupi.yuaicodemother.constant.AppConstant;
 import com.yupi.yuaicodemother.core.AiCodeGeneratorFacade;
 import com.yupi.yuaicodemother.core.builder.VueProjectBuilder;
@@ -27,6 +28,7 @@ import com.yupi.yuaicodemother.model.vo.AppVO;
 import com.yupi.yuaicodemother.model.vo.UserVO;
 import com.yupi.yuaicodemother.service.AppService;
 import com.yupi.yuaicodemother.service.ChatHistoryService;
+import com.yupi.yuaicodemother.service.GuardrailAuditService;
 import com.yupi.yuaicodemother.service.ScreenshotService;
 import com.yupi.yuaicodemother.service.UserService;
 import jakarta.annotation.Resource;
@@ -70,6 +72,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private GuardrailAuditService guardrailAuditService;
 
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
@@ -189,6 +194,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "代码生成类型错误");
         // 订阅时占用本轮任务，防止多窗口在同一项目上交叉生成 / 构建。
         return Flux.defer(() -> {
+            // 在创建 AI 服务、加载记忆或启动构建前拦截，保留完整的用户和应用上下文。
+            var violation = PromptSafetyInputGuardrail.check(message);
+            if (violation != null) {
+                guardrailAuditService.recordBlocked(appId, loginUser.getId(), message, violation);
+                return Flux.error(new BusinessException(ErrorCode.FORBIDDEN_ERROR, violation.message()));
+            }
             String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
             boolean vueProject = codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT;
             String buildId = vueProject ? buildStatusStore.start(projectPath, "generating") : null;

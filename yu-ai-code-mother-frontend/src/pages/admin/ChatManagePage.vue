@@ -14,6 +14,8 @@
         >
           <a-select-option value="user">用户消息</a-select-option>
           <a-select-option value="ai">AI 消息</a-select-option>
+          <a-select-option value="user_rejected">已拦截输入</a-select-option>
+          <a-select-option value="guardrail">护轨拦截提示</a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item label="应用ID">
@@ -48,8 +50,8 @@
           </a-tooltip>
         </template>
         <template v-else-if="column.dataIndex === 'messageType'">
-          <a-tag :color="record.messageType === 'user' ? 'blue' : 'green'">
-            {{ record.messageType === 'user' ? '用户消息' : 'AI 消息' }}
+          <a-tag :color="record.messageType === 'user' ? 'blue' : record.messageType === 'ai' ? 'green' : 'red'">
+            {{ messageTypeLabels[record.messageType as string] || record.messageType }}
           </a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'createTime'">
@@ -73,6 +75,12 @@ import { listAllChatHistoryByPageForAdmin } from '@/api/chatHistoryController'
 import { formatTime } from '@/utils/time'
 
 const router = useRouter()
+const messageTypeLabels: Record<string, string> = {
+  user: '用户消息',
+  ai: 'AI 消息',
+  user_rejected: '已拦截输入',
+  guardrail: '护轨拦截提示',
+}
 
 const columns = [
   {

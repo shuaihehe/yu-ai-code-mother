@@ -425,7 +425,7 @@ const loadChatHistory = async (isLoadMore = false) => {
         // 将对话历史转换为消息格式，并按时间正序排列（老消息在前）
         const historyMessages: Message[] = chatHistories
             .map((chat) => ({
-              type: (chat.messageType === 'user' ? 'user' : 'ai') as 'user' | 'ai',
+              type: (chat.messageType === 'user' || chat.messageType === 'user_rejected' ? 'user' : 'ai') as 'user' | 'ai',
               content: chat.message || '',
               createTime: chat.createTime,
             }))

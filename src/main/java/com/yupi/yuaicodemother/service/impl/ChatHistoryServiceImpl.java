@@ -109,6 +109,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         try {
             QueryWrapper queryWrapper = QueryWrapper.create()
                     .eq("appId", appId)
+                    // 被拒绝的输入及拦截提示只用于展示，不进入模型记忆窗口。
+                    .in("messageType", List.of(ChatHistoryMessageTypeEnum.USER.getValue(),
+                            ChatHistoryMessageTypeEnum.AI.getValue()))
                     .orderBy("createTime", false)
                     .limit(1, maxCount);
             List<ChatHistory> historyList = this.list(queryWrapper);

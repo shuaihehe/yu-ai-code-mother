@@ -2,6 +2,7 @@ package com.yupi.yuaicodemother.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.yupi.yuaicodemother.ai.guardrail.PromptSafetyInputGuardrail;
 import com.yupi.yuaicodemother.ai.tools.*;
 import com.yupi.yuaicodemother.exception.BusinessException;
 import com.yupi.yuaicodemother.exception.ErrorCode;
@@ -98,6 +99,7 @@ public class AiCodeGeneratorServiceFactory {
                         .chatModel(chatModel)
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
+                        .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
                         .build();
 
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
@@ -108,7 +110,8 @@ public class AiCodeGeneratorServiceFactory {
                         // 如果工具不存在，则返回错误信息
                         .hallucinatedToolNameStrategy(toolExecutionRequest ->
                                 ToolExecutionResultMessage.from(toolExecutionRequest,
-                                        "Error: there is no tool called" + toolExecutionRequest.name()))
+                                        "Error: there is no tool called " + toolExecutionRequest.name()))
+                        .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
                         .build();
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());
         };

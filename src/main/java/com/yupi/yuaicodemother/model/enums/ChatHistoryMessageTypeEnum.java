@@ -10,7 +10,9 @@ import lombok.Getter;
 public enum ChatHistoryMessageTypeEnum {
 
     USER("用户消息", "user"),
-    AI("AI 消息", "ai");
+    AI("AI 消息", "ai"),
+    USER_REJECTED("已拦截输入", "user_rejected"),
+    GUARDRAIL("护轨拦截提示", "guardrail");
 
     private final String text;
 
