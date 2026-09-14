@@ -3,6 +3,7 @@ package com.yupi.yuaicodemother.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.yupi.yuaicodemother.ai.guardrail.PromptSafetyInputGuardrail;
+import com.yupi.yuaicodemother.ai.guardrail.RetryOutputGuardrail;
 import com.yupi.yuaicodemother.ai.tools.*;
 import com.yupi.yuaicodemother.exception.BusinessException;
 import com.yupi.yuaicodemother.exception.ErrorCode;
@@ -100,6 +101,7 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
                         .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
+//                        .outputGuardrails(new RetryOutputGuardrail()) // 添加输出护轨，为了流式输出，这里不使用
                         .build();
 
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
@@ -111,7 +113,9 @@ public class AiCodeGeneratorServiceFactory {
                         .hallucinatedToolNameStrategy(toolExecutionRequest ->
                                 ToolExecutionResultMessage.from(toolExecutionRequest,
                                         "Error: there is no tool called " + toolExecutionRequest.name()))
+//                        .maxToolCallingRoundTrips(10) // 每次 AI Service 调用最多允许 10 轮工具调用 暂时不生效，被dev中自定义类覆盖了
                         .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
+//                        .outputGuardrails(new RetryOutputGuardrail()) // 添加输出护轨
                         .build();
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());
         };

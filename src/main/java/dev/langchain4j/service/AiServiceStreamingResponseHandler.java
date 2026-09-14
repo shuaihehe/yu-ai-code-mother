@@ -181,6 +181,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                                 .augmentationResult(commonGuardrailParams.augmentationResult())
                                 .userMessageTemplate(commonGuardrailParams.userMessageTemplate())
                                 .variables(commonGuardrailParams.variables())
+                                .invocationContext(invocationContext) // 显式传入调用上下文
                                 .build();
 
                         var outputGuardrailParams = OutputGuardrailRequest.builder()
